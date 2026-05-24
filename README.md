@@ -119,3 +119,5 @@ Use association language for observational data.
 - Add video-linked labeling validation
 - Add clean visuals under `reports/figures/` and surface 3–5 in this README
 - Build a lightweight Streamlit serve recommendation dashboard
+- Build some sort one pager that shows
+- Add PDF's into the notebooks
