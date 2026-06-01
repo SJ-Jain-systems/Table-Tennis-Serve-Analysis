@@ -109,10 +109,9 @@ Table-Tennis-Serve-Analysis/
 10. Final tactical recommendations
 
 ## Key Reporting Language
-Use association language for observational data.
 
-- Preferred: “Heavy spin is associated with higher point win rate.”
-- Avoid: “Heavy spin causes higher point win rate.”
+- Preferred: “Heavy spin is associated with a higher point win rate.”
+- Avoid: “Heavy spin causes a higher point win rate.”
 
 ## Next Steps
 - Expand dataset to 100+ matches
