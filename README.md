@@ -1,7 +1,7 @@
 # Table Tennis Serve Analysis
 
 ## Overview
-This project analyzes point-level table tennis serve data to identify which serve patterns are most associated with winning points, forcing weak returns, and creating favorable rally structures. The current framing is a **contextual serve recommendation system**: can serve characteristics, match context, and opponent profile predict point outcomes and identify high-value serve strategies?
+This project analyzes point level table tennis serve data to identify which serve patterns are most associated with winning points, forcing weak returns, and creating favorable rally structures. The current framing is a **contextual serve recommendation system**: can serve characteristics, match context, and opponent profile predict point outcomes and identify high-value serve strategies?
 
 ## Motivation
 As a competitive table tennis player rated around 1910 Elo, I wanted to use data science to evaluate the strongest part of my game: serving. The goal is to move beyond intuition and build a repeatable framework for serve selection.
