@@ -9,7 +9,7 @@ As a competitive table tennis player rated around 1910 Elo, I wanted to use data
 ## Research Questions
 1. Which serve attributes are most predictive of point outcome?
 2. How do serve effects vary by opponent style and skill level?
-3. Which serves successfully create the intended rally type?
+3. Which serves successfully lead to the intended type of rally?
 4. Can a model recommend high-value serves **before the point begins**?
 
 ## Dataset
