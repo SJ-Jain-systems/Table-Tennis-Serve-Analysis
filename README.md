@@ -205,13 +205,11 @@ Table-Tennis-Serve-Analysis/
 │   ├── 02_feature_engineering.ipynb
 │   ├── 03_modeling.ipynb
 │   ├── 04_serve_recommendation.ipynb
-│   ├── table_tennis_serves.csv
-│   ├── table_tennis_serves_features.csv
 │   └── Notebooks PDF/
 │       ├── Table Tennis Serve Analysis, EDA (Notebook 1).pdf
 │       ├── Table Tennis Serve Analysis, Feature Engineering (Notebook 2).pdf
 │       ├── Table Tennis Serve Analysis, Modeling (Notebook 3).pdf
-│       └── Table Tennis Serve Analysis, Reccomendation System (Notebook 4).pdf
+│       └── Table Tennis Serve Analysis, Recommendation System (Notebook 4).pdf
 └── src/
     ├── clean_data.py
     ├── features.py
