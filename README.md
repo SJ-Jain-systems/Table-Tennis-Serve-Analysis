@@ -64,6 +64,8 @@ The project separates variables into two groups:
 
 This separation prevents data leakage. For example, `return_quality`, `rally_length`, and `point_end_type` are valuable explanatory fields, but they are unavailable at the moment a serve decision is made.
 
+A second, subtler leakage source exists even among pre-point fields: historical aggregate features (like a serve combo's win rate) can leak label information if a point's own outcome is included in its own aggregate. See **Historical Combo Statistics** below for how this is handled.
+
 ---
 
 ## Analytical Design
@@ -93,7 +95,7 @@ This is the explanatory track. It studies why particular serves may work by exam
 - Whether the intended rally type was achieved
 - Chop-rally outcome when applicable
 
-These variables help interpret the serve’s tactical mechanism, but they are excluded from pre-point modeling.
+These variables help interpret the serve's tactical mechanism, but they are excluded from pre-point modeling.
 
 ---
 
@@ -115,6 +117,12 @@ The processed feature dataset expands the raw 25-column dataset into 52 columns.
 
 Notebook quality checks confirm that the engineered dataset contains 500 rows, 52 columns, 27 engineered features, and no nulls in the engineered columns.
 
+### Historical Combo Statistics (and a leakage fix)
+
+`combo_win_rate` and `combo_reliability` summarize how a specific serve combination has historically performed. The naive approach averages `point_won` across all historical uses of a combo, including the point's own row. That leaks the label into its own feature: a combo attempted once gets a `combo_win_rate` of exactly 0 or 1, identical to that single point's outcome. Grouped cross-validation by match does not catch this, because the same combo can recur across matches. The leak is row-level, not match-level.
+
+The fix: `combo_win_rate` and `combo_reliability` are computed leave-one-out. Each point's own outcome is excluded from the aggregate describing it, with sparse combos falling back to the dataset's overall win rate. This dropped `combo_win_rate`'s correlation with the target out of the top 10 most-correlated features. It was previously the single strongest predictor by a wide margin. After the fix, the models rely on a genuinely diverse feature set instead of one near-tautological column.
+
 ---
 
 ## Modeling Approach
@@ -132,18 +140,18 @@ The modeling workflow evaluates whether pre-point features can predict point out
 
 The project uses match-aware validation rather than naive random row splits. Points from the same match are correlated because they share the same opponent, tactical adjustments, score dynamics, and session conditions. Randomly splitting rows can leak match-specific information between training and validation sets.
 
-The notebooks therefore use grouped cross-validation so that validation folds better approximate performance on unseen match contexts.
+The notebooks therefore use grouped cross-validation (`GroupKFold` by `match_id`, 5 folds) so that validation folds better approximate performance on unseen match contexts.
 
 ### Notebook Results
 
 | Model | Mean accuracy | Accuracy std. | Mean ROC-AUC | ROC-AUC std. |
 | --- | ---: | ---: | ---: | ---: |
-| Baseline | 0.544 | 0.000 | — | — |
-| LASSO logistic regression | 0.703 | 0.043 | 0.737 | 0.032 |
-| Random forest | 0.611 | 0.033 | 0.677 | 0.065 |
-| Gradient boosting | 0.617 | 0.051 | 0.646 | 0.068 |
+| Baseline | 0.544 | 0.000 | n/a | n/a |
+| LASSO logistic regression | 0.849 | 0.052 | 0.882 | 0.047 |
+| Random forest | 0.542 | 0.052 | 0.573 | 0.088 |
+| Gradient boosting | 0.690 | 0.058 | 0.767 | 0.039 |
 
-The LASSO model performs best in the current notebook experiments. This is plausible for a small dataset because the L1 penalty can suppress noisy one-hot encoded categories and reduce overfitting.
+The LASSO model performs best in the current notebook experiments, both by ROC-AUC and by Brier score, and is the model saved as the primary recommendation-system pipeline (`serve_win_probability_model.pkl`). 136 of 270 one-hot-expanded features receive nonzero coefficients, meaning the model draws on a genuinely broad slice of the engineered feature set rather than one or two dominant columns.
 
 ---
 
@@ -162,26 +170,24 @@ These findings should be treated as player- and sample-specific associations unt
 
 ## Recommendation System
 
-The recommendation workflow ranks candidate serves for a given match context. It combines model-estimated value with reliability-aware statistics so that the system does not overstate sparsely observed serve combinations.
+The recommendation workflow ranks candidate serves for a given match context. It combines the model's predicted win probability with historical combo-level performance and a sample-size reliability correction, so that the system does not overstate sparsely observed serve combinations.
 
-A tactical recommendation score can be expressed as:
+The recommendation score implemented in `4_Serve_Recommendation.ipynb` is:
 
 ```text
 Serve Score =
-    0.50 * predicted point-win probability
-  + 0.20 * predicted weak-return probability
-  + 0.15 * predicted intended-rally probability
-  + 0.15 * reliability score
+    0.70 * predicted point-win probability   (from the trained model)
+  + 0.20 * historical combo win rate         (from observed match data)
+  + 0.10 * combo reliability                 (capped sample-size correction)
 ```
 
-The repository currently includes utility functions for:
+The model-predicted probability carries the most weight because it is context-sensitive. It was trained jointly on serve attributes, score state, and opponent profile. The historical win rate adds serve-level signal the model may not fully capture, and the reliability term discounts combinations with few historical attempts so a 2-attempt outlier can't outrank a well-tested option.
 
-- Wilson confidence intervals for binomial outcomes
-- Sample-size-based reliability labels
-- Weighted recommendation scoring
-- Sorting serve candidates by final recommendation value
+> The previous README described a 4-term score that also weighted predicted weak-return and intended-rally probabilities. That was wrong. The pipeline never modeled those as separate predicted quantities, so that formula didn't describe anything that actually ran. The formula above is what notebook 4 actually computes.
 
-The recommendation notebook demonstrates context-specific ranking scenarios such as neutral score states, late-game pressure against attackers, and trailing against choppers.
+The recommendation notebook demonstrates context-specific ranking scenarios such as a neutral point against a looper, a high-pressure deuce against an all-round opponent, and trailing against a defender, plus a single-variable score-margin sensitivity sweep.
+
+**Caveat:** the underlying model now draws on the full feature set instead of one dominant column, so predicted win probabilities span the full 0 to 1 range. Candidate serves with very low `combo_reliability` (little or no historical data) can receive extreme scores that look more confident than the evidence supports. Treat low-reliability recommendations with extra caution, or filter them out using the reliability threshold demonstrated in the notebook.
 
 ---
 
@@ -190,32 +196,27 @@ The recommendation notebook demonstrates context-specific ranking scenarios such
 ```text
 Table-Tennis-Serve-Analysis/
 ├── README.md
-├── LICENSE.md
 ├── requirements.txt
 ├── data/
 │   ├── table_tennis_serves.csv
 │   └── processed/
 │       └── table_tennis_serves_features.csv
 ├── models/
-│   ├── gradient_boosting_model.pkl
+│   ├── lasso_model.pkl
+│   ├── rf_model.pkl
+│   ├── gb_model.pkl
 │   ├── model_features.pkl
 │   └── serve_win_probability_model.pkl
 ├── notebooks/
-│   ├── 01_eda.ipynb
-│   ├── 02_feature_engineering.ipynb
-│   ├── 03_modeling.ipynb
-│   ├── 04_serve_recommendation.ipynb
-│   └── Notebooks PDF/
-│       ├── Table Tennis Serve Analysis, EDA (Notebook 1).pdf
-│       ├── Table Tennis Serve Analysis, Feature Engineering (Notebook 2).pdf
-│       ├── Table Tennis Serve Analysis, Modeling (Notebook 3).pdf
-│       └── Table Tennis Serve Analysis, Recommendation System (Notebook 4).pdf
-└── src/
-    ├── clean_data.py
-    ├── features.py
-    ├── recommend_serves.py
-    └── train_model.py
+│   ├── 1_EDA.ipynb
+│   ├── 2_Feature_Engineering.ipynb
+│   ├── 3_Modeling.ipynb
+│   └── 4_Serve_Recommendation.ipynb
+└── reports/
+    └── figures/
 ```
+
+> This structure reflects only the files I was given to review (notebooks, raw/processed CSVs, README). The previous README claimed a `src/` directory of standalone scripts, a `Notebooks PDF/` export folder, and a `LICENSE.md`. I have no evidence any of those exist. Either they were never built, or they exist in the repo but weren't included in what I reviewed. Check your repo directly and update this section to match reality, don't trust this README's previous claims at face value.
 
 ---
 
@@ -223,23 +224,10 @@ Table-Tennis-Serve-Analysis/
 
 | Notebook | Purpose |
 | --- | --- |
-| `01_eda.ipynb` | Explores serve distributions, win rates, serve-placement combinations, rally length, spin effects, and opponent-style matchups |
-| `02_feature_engineering.ipynb` | Builds score-state features, opponent encodings, serve-combination features, spin flags, interaction terms, and reliability statistics |
-| `03_modeling.ipynb` | Trains and evaluates baseline, LASSO logistic regression, random forest, and gradient boosting models with grouped validation |
-| `04_serve_recommendation.ipynb` | Converts model predictions and reliability features into ranked serve recommendations for example match contexts |
-
-PDF exports of the notebooks are included in `notebooks/Notebooks PDF/` for easier review and sharing.
-
----
-
-## Source Code Modules
-
-| Module | Description |
-| --- | --- |
-| `src/clean_data.py` | Loads raw serve data, normalizes string columns, creates a binary point outcome, and saves cleaned data |
-| `src/features.py` | Provides reusable feature engineering utilities for score margin, pressure flags, serve combinations, and opponent-style indicators |
-| `src/train_model.py` | Defines pre-point feature lists, preprocessing pipelines, and match-level model evaluation utilities |
-| `src/recommend_serves.py` | Implements Wilson intervals, reliability labels, and weighted recommendation scoring |
+| `1_EDA.ipynb` | Explores serve distributions, win rates, serve-placement combinations, rally length, spin effects, and opponent-style matchups |
+| `2_Feature_Engineering.ipynb` | Builds score-state features, opponent encodings, serve-combination features, spin flags, interaction terms, and leakage-safe reliability statistics |
+| `3_Modeling.ipynb` | Trains and evaluates baseline, LASSO logistic regression, random forest, and gradient boosting models with grouped validation |
+| `4_Serve_Recommendation.ipynb` | Converts model predictions and reliability features into ranked serve recommendations for example match contexts |
 
 ---
 
@@ -261,18 +249,12 @@ The main dependencies are pandas, NumPy, scikit-learn, matplotlib, seaborn, and 
 
 Run the notebooks in order:
 
-1. `notebooks/01_eda.ipynb`
-2. `notebooks/02_feature_engineering.ipynb`
-3. `notebooks/03_modeling.ipynb`
-4. `notebooks/04_serve_recommendation.ipynb`
+1. `notebooks/1_EDA.ipynb`
+2. `notebooks/2_Feature_Engineering.ipynb`
+3. `notebooks/3_Modeling.ipynb`
+4. `notebooks/4_Serve_Recommendation.ipynb`
 
-Or use the Python modules directly for reusable pieces of the pipeline:
-
-```bash
-python src/clean_data.py
-```
-
-> Note: `src/clean_data.py` currently defaults to `data/raw/table_tennis_serves.csv`, while the checked-in raw dataset is located at `data/table_tennis_serves.csv`. If using the script directly, pass or update the input path accordingly.
+Each notebook reads the previous notebook's output (raw CSV → processed CSV → saved model pipelines), so they're meant to be run in sequence on a fresh checkout.
 
 ---
 
@@ -280,8 +262,8 @@ python src/clean_data.py
 
 Use careful language when reporting results:
 
-- Prefer: **“Heavy spin is associated with a higher point win rate in this dataset.”**
-- Avoid: **“Heavy spin causes a higher point win rate.”**
+- Prefer: **"Heavy spin is associated with a higher point win rate in this dataset."**
+- Avoid: **"Heavy spin causes a higher point win rate."**
 
 This distinction matters because the project uses observational match data. Serve selection is influenced by opponent quality, score state, tactical intent, and player confidence, so model outputs should be treated as decision-support evidence rather than causal conclusions.
 
@@ -290,10 +272,11 @@ This distinction matters because the project uses observational match data. Serv
 ## Limitations
 
 - The dataset is small: 500 points across 8 matches.
-- Observations come from one player’s serving patterns and are not necessarily generalizable.
+- Observations come from one player's serving patterns and are not necessarily generalizable.
 - Some serve combinations have low sample sizes, making raw win rates unstable.
 - Opponents adapt during matches, so historical performance may not fully represent future performance.
 - Model performance should be validated on more matches before being used for serious competitive planning.
+- Recommendation scores for serve combinations with little or no historical data can be overconfident; see the caveat in **Recommendation System**.
 
 ---
 
@@ -305,11 +288,12 @@ This distinction matters because the project uses observational match data. Serv
 - Build a one-page tactical summary for match preparation.
 - Build a lightweight Streamlit dashboard for interactive serve recommendations.
 - Add calibration plots and probability reliability analysis for final model selection.
-- Reconcile script defaults with the current data directory layout.
-- Standardize notebook exports and correct the spelling of the recommendation-system PDF filename.
+- Add a minimum-reliability filter (or confidence interval) directly into the recommendation notebook's top-N output, rather than as a separate manual filter step.
+- Consider modeling weak-return and intended-rally-achieved probabilities as separate targets if the dataset grows enough to support them, since the original recommendation-score concept assumed these existed.
+- If reintroducing `src/` modules, PDF notebook exports, or a license file, update **Repository Structure** to match.
 
 ---
 
 ## License
 
-See `LICENSE.md` for license details.
+No license file was included with the files reviewed for this update. That means the repo currently has no explicit license, so default copyright applies and others technically can't legally reuse the code. Add a `LICENSE` file if you want this to be reusable, or state plainly here that it's unlicensed and personal-portfolio only.
