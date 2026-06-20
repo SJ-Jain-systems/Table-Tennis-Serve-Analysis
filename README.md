@@ -196,6 +196,7 @@ The recommendation notebook demonstrates context-specific ranking scenarios such
 ```text
 Table-Tennis-Serve-Analysis/
 ├── README.md
+├── LICENSE.md
 ├── requirements.txt
 ├── data/
 │   ├── table_tennis_serves.csv
@@ -216,7 +217,7 @@ Table-Tennis-Serve-Analysis/
     └── figures/
 ```
 
-> This structure reflects only the files I was given to review (notebooks, raw/processed CSVs, README). The previous README claimed a `src/` directory of standalone scripts, a `Notebooks PDF/` export folder, and a `LICENSE.md`. I have no evidence any of those exist. Either they were never built, or they exist in the repo but weren't included in what I reviewed. Check your repo directly and update this section to match reality, don't trust this README's previous claims at face value.
+> `LICENSE.md` and `requirements.txt` are confirmed real, I've reviewed both directly. The `src/` directory of standalone scripts and the `Notebooks PDF/` export folder are still unconfirmed: they weren't included in any upload so far, across two rounds of files. That's not proof they don't exist, but at this point the simpler explanation is they were planned and never built. Check your repo directly. If they're real, restore that section. If not, drop the claim for good instead of carrying it forward again.
 
 ---
 
@@ -241,7 +242,7 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-The main dependencies are pandas, NumPy, scikit-learn, matplotlib, seaborn, and Jupyter.
+The main dependencies are pandas, NumPy, scikit-learn, matplotlib, seaborn, scipy, joblib, and Jupyter.
 
 ---
 
@@ -296,4 +297,4 @@ This distinction matters because the project uses observational match data. Serv
 
 ## License
 
-No license file was included with the files reviewed for this update. That means the repo currently has no explicit license, so default copyright applies and others technically can't legally reuse the code. Add a `LICENSE` file if you want this to be reusable, or state plainly here that it's unlicensed and personal-portfolio only.
+MIT License. See `LICENSE.md` at the repository root. You're free to use, copy, modify, and distribute this code, with no warranty.
