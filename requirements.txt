@@ -1,8 +1,13 @@
 pandas>=2.0
 numpy>=1.26
-scikit-learn>=1.4
+# Pinned exactly: the saved models in models/*.pkl were trained and pickled
+# under scikit-learn 1.7.2. Newer sklearn versions can fail to unpickle them
+# (observed: "STACK_GLOBAL requires str" under 1.8.0). If you retrain the
+# models under a different version, re-pin this to match.
+scikit-learn==1.7.2
 matplotlib>=3.8
 seaborn>=0.13
 jupyter>=1.0
 scipy>=1.11
 joblib>=1.3
+ 
