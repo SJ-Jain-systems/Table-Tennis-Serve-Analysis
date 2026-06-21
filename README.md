@@ -146,12 +146,12 @@ The notebooks therefore use grouped cross-validation (`GroupKFold` by `match_id`
 
 | Model | Mean accuracy | Accuracy std. | Mean ROC-AUC | ROC-AUC std. |
 | --- | ---: | ---: | ---: | ---: |
-| Baseline | 0.544 | 0.000 | n/a | n/a |
-| LASSO logistic regression | 0.849 | 0.052 | 0.882 | 0.047 |
-| Random forest | 0.542 | 0.052 | 0.573 | 0.088 |
-| Gradient boosting | 0.690 | 0.058 | 0.767 | 0.039 |
+| Baseline (majority class) | 0.544 | — | n/a | n/a |
+| LASSO logistic regression | 0.671 | 0.063 | 0.746 | 0.062 |
+| Random forest | 0.644 | 0.023 | 0.696 | 0.083 |
+| Gradient boosting | 0.617 | 0.051 | 0.646 | 0.069 |
 
-The LASSO model performs best in the current notebook experiments, both by ROC-AUC and by Brier score, and is the model saved as the primary recommendation-system pipeline (`serve_win_probability_model.pkl`). 136 of 270 one-hot-expanded features receive nonzero coefficients, meaning the model draws on a genuinely broad slice of the engineered feature set rather than one or two dominant columns.
+LASSO is the best-performing model in the current notebook run, both by ROC-AUC and by Brier score, and is the model saved as the primary recommendation-system pipeline (`serve_win_probability_model.pkl`). All three models clear the majority-class baseline, with LASSO showing the largest and most consistent margin. Given the dataset size (500 points, 8 matches), these numbers should be read as a directional signal rather than a precise estimate — fold-to-fold std. is non-trivial relative to the gap between models.
 
 ---
 
@@ -183,11 +183,11 @@ Serve Score =
 
 The model-predicted probability carries the most weight because it is context-sensitive. It was trained jointly on serve attributes, score state, and opponent profile. The historical win rate adds serve-level signal the model may not fully capture, and the reliability term discounts combinations with few historical attempts so a 2-attempt outlier can't outrank a well-tested option.
 
-> The previous README described a 4-term score that also weighted predicted weak-return and intended-rally probabilities. That was wrong. The pipeline never modeled those as separate predicted quantities, so that formula didn't describe anything that actually ran. The formula above is what notebook 4 actually computes.
-
 The recommendation notebook demonstrates context-specific ranking scenarios such as a neutral point against a looper, a high-pressure deuce against an all-round opponent, and trailing against a defender, plus a single-variable score-margin sensitivity sweep.
 
-**Caveat:** the underlying model now draws on the full feature set instead of one dominant column, so predicted win probabilities span the full 0 to 1 range. Candidate serves with very low `combo_reliability` (little or no historical data) can receive extreme scores that look more confident than the evidence supports. Treat low-reliability recommendations with extra caution, or filter them out using the reliability threshold demonstrated in the notebook.
+**Caveat:** the underlying model draws on the full feature set rather than one dominant column, so predicted win probabilities span the full 0 to 1 range. Candidate serves with very low `combo_reliability` (little or no historical data) can receive extreme scores that look more confident than the evidence supports. Treat low-reliability recommendations with extra caution, or filter them out using the reliability threshold demonstrated in the notebook.
+
+A separate limitation worth naming directly: `combo_win_rate` at inference time (notebook 4) is computed from the same historical data used to train the model, not refreshed leave-one-out per candidate. Combinations attempted frequently in the training data carry a more reliable historical signal than rarely-attempted ones, and which combinations get attempted often is itself a non-random artifact of how the player serves, not a random sample.
 
 ---
 
@@ -198,6 +198,7 @@ Table-Tennis-Serve-Analysis/
 ├── README.md
 ├── LICENSE.md
 ├── requirements.txt
+├── .gitignore
 ├── data/
 │   ├── table_tennis_serves.csv
 │   └── processed/
@@ -213,11 +214,16 @@ Table-Tennis-Serve-Analysis/
 │   ├── 2_Feature_Engineering.ipynb
 │   ├── 3_Modeling.ipynb
 │   └── 4_Serve_Recommendation.ipynb
+├── src/
+│   ├── clean_data.py
+│   ├── features.py
+│   ├── train_model.py
+│   └── recommend_serves.py
 └── reports/
     └── figures/
 ```
 
-> `LICENSE.md` and `requirements.txt` are confirmed real, I've reviewed both directly. The `src/` directory of standalone scripts and the `Notebooks PDF/` export folder are still unconfirmed: they weren't included in any upload so far, across two rounds of files. That's not proof they don't exist, but at this point the simpler explanation is they were planned and never built. Check your repo directly. If they're real, restore that section. If not, drop the claim for good instead of carrying it forward again.
+`src/` holds standalone script versions of the notebook pipeline (data cleaning, feature engineering, model training, and serve recommendation) for use outside a notebook environment, e.g. in a future dashboard or CLI tool.
 
 ---
 
@@ -285,13 +291,10 @@ This distinction matters because the project uses observational match data. Serv
 
 - Expand the dataset to 100+ matches and more opponent archetypes.
 - Add video-linked labeling for serve quality and return classification validation.
-- Generate polished plots under a `reports/figures/` directory and surface the most important visuals in this README.
+- Generate polished plots under `reports/figures/` and surface the most important visuals in this README.
 - Build a one-page tactical summary for match preparation.
-- Build a lightweight Streamlit dashboard for interactive serve recommendations.
-- Add calibration plots and probability reliability analysis for final model selection.
+- Build a lightweight Streamlit dashboard for interactive serve recommendations using the `src/` scripts.
 - Add a minimum-reliability filter (or confidence interval) directly into the recommendation notebook's top-N output, rather than as a separate manual filter step.
-- Consider modeling weak-return and intended-rally-achieved probabilities as separate targets if the dataset grows enough to support them, since the original recommendation-score concept assumed these existed.
-- If reintroducing `src/` modules, PDF notebook exports, or a license file, update **Repository Structure** to match.
 
 ---
 
