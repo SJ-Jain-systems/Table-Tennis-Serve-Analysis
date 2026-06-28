@@ -1,0 +1,8 @@
+line-length = 120
+
+[lint]
+# F = pyflakes (real errors), E/W = pycodestyle, I = import sorting.
+select = ["E", "F", "W", "I"]
+# E402: train_model.py sets warnings.filterwarnings() before its imports on
+# purpose (mirrors notebook 3), so module-level import position is intentional.
+ignore = ["E402"]
