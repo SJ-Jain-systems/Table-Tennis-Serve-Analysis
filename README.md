@@ -198,32 +198,46 @@ Table-Tennis-Serve-Analysis/
 ├── README.md
 ├── LICENSE.md
 ├── requirements.txt
+├── Makefile                                # full pipeline: clean -> features -> train -> recommend
+├── pytest.ini
+├── ruff.toml
 ├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── ci.yml                          # lint (ruff) + tests (pytest) on push / PR
 ├── data/
 │   ├── table_tennis_serves.csv
 │   └── processed/
 │       └── table_tennis_serves_features.csv
 ├── models/
-│   ├── lasso_model.pkl
-│   ├── rf_model.pkl
-│   ├── gb_model.pkl
-│   ├── model_features.pkl
-│   └── serve_win_probability_model.pkl
+│   ├── lasso_model.pkl                     # tuned LASSO logistic regression (written by notebook 3 / src/train_model.py)
+│   ├── rf_model.pkl                        # tuned random forest (notebook 3 / src/train_model.py)
+│   ├── gb_model.pkl                        # gradient boosting (notebook 3 / src/train_model.py)
+│   ├── serve_win_probability_model.pkl     # primary model, best Brier score; loaded by notebooks 4 & 5
+│   └── model_features.pkl                  # ordered model feature list; loaded by notebooks 4 & 5
 ├── notebooks/
 │   ├── 1_EDA.ipynb
 │   ├── 2_Feature_Engineering.ipynb
 │   ├── 3_Modeling.ipynb
-│   └── 4_Serve_Recommendation.ipynb
+│   ├── 4_Serve_Recommendation.ipynb
+│   ├── 5_Model_Evaluation_and_Interpretation.ipynb
+│   └── Notebooks PDF/                       # exported PDF copies of the notebooks
 ├── src/
+│   ├── __init__.py
 │   ├── clean_data.py
 │   ├── features.py
 │   ├── train_model.py
-│   └── recommend_serves.py
+│   ├── recommend_serves.py
+│   └── run_pipeline.py                      # CLI runner wiring the four steps together
+├── tests/
+│   └── test_pipeline.py                     # leakage regression + pipeline smoke tests
 └── reports/
-    └── figures/
+    └── figures/                             # generated plots (.gitkeep placeholder)
 ```
 
-`src/` holds standalone script versions of the notebook pipeline (data cleaning, feature engineering, model training, and serve recommendation) for use outside a notebook environment, e.g. in a future dashboard or CLI tool.
+`src/` holds standalone script versions of the notebook pipeline (data cleaning, feature engineering, model training, and serve recommendation) for use outside a notebook environment, e.g. in a future dashboard or CLI tool. `src/run_pipeline.py` wires the four steps into one command, and the `Makefile` exposes `make all` (clean → features → train → recommend) plus `make test` / `make lint`.
+
+The five model artifacts under `models/` are produced by `3_Modeling.ipynb` (equivalently `src/train_model.py`): `lasso_model.pkl`, `rf_model.pkl`, and `gb_model.pkl` are the three trained classifiers; `serve_win_probability_model.pkl` is the primary pipeline selected by best Brier score; and `model_features.pkl` is the ordered feature list. Notebooks 4 and 5 load `serve_win_probability_model.pkl` and `model_features.pkl`. (An earlier `gradient_boosting_model.pkl` was a stale duplicate of `gb_model.pkl` and has been removed.)
 
 ---
 
@@ -235,6 +249,7 @@ Table-Tennis-Serve-Analysis/
 | `2_Feature_Engineering.ipynb` | Builds score-state features, opponent encodings, serve-combination features, spin flags, interaction terms, and leakage-safe reliability statistics |
 | `3_Modeling.ipynb` | Trains and evaluates baseline, LASSO logistic regression, random forest, and gradient boosting models with grouped validation |
 | `4_Serve_Recommendation.ipynb` | Converts model predictions and reliability features into ranked serve recommendations for example match contexts |
+| `5_Model_Evaluation_and_Interpretation.ipynb` | Evaluates the saved model: stability check, coefficient interpretation, calibration curve, opponent-style breakdown, and a decile backtest of the recommendation ranking |
 
 ---
 
@@ -260,8 +275,9 @@ Run the notebooks in order:
 2. `notebooks/2_Feature_Engineering.ipynb`
 3. `notebooks/3_Modeling.ipynb`
 4. `notebooks/4_Serve_Recommendation.ipynb`
+5. `notebooks/5_Model_Evaluation_and_Interpretation.ipynb`
 
-Each notebook reads the previous notebook's output (raw CSV → processed CSV → saved model pipelines), so they're meant to be run in sequence on a fresh checkout.
+Each notebook reads the previous notebook's output (raw CSV → processed CSV → saved model pipelines), so they're meant to be run in sequence on a fresh checkout. The same pipeline is also runnable as scripts via `make all` (or `python -m src.run_pipeline`).
 
 ---
 
