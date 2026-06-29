@@ -151,7 +151,7 @@ The notebooks therefore use grouped cross-validation (`GroupKFold` by `match_id`
 | Random forest | 0.644 | 0.023 | 0.696 | 0.083 |
 | Gradient boosting | 0.617 | 0.051 | 0.646 | 0.069 |
 
-LASSO is the best-performing model in the current notebook run, both by ROC-AUC and by Brier score, and is the model saved as the primary recommendation-system pipeline (`serve_win_probability_model.pkl`). All three models clear the majority-class baseline, with LASSO showing the largest and most consistent margin. Given the dataset size (500 points, 8 matches), these numbers should be read as a directional signal rather than a precise estimate — fold-to-fold std. is non-trivial relative to the gap between models.
+LASSO is the best-performing model in the current notebook run, both by ROC-AUC and by Brier score, and is the model saved as the primary recommendation-system pipeline (`serve_win_probability_model.pkl`). All three models clear the majority-class baseline, with LASSO showing the largest and most consistent margin. Given the dataset size (500 points, 8 matches), these numbers should be read as a directional signal rather than a precise estimate — fold-to-fold std. is non-trivial relative to the gap between models. Notebook 3 additionally reports bootstrap 95% confidence intervals on the pooled out-of-fold accuracy and ROC-AUC (2000 resamples). Those intervals are wide and overlap across models, which reinforces reading the ranking as directional: the fold-to-fold spread is comparable to the differences between models, so the ordering here is not statistically separable on this dataset.
 
 ---
 
