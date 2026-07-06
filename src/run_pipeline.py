@@ -14,6 +14,7 @@ serves), so the pipeline is reproducible from a fresh checkout.
 """
 from __future__ import annotations
 
+import argparse
 import sys
 
 import numpy as np
@@ -122,13 +123,26 @@ def build_candidate_features(serve_options: pd.DataFrame, context: dict) -> pd.D
     return rec
 
 
-def run_recommend(context: dict | None = None, top_n: int = 10) -> pd.DataFrame:
-    """Rank candidate serves for a match context using the saved primary model."""
+def run_recommend(
+    context: dict | None = None, top_n: int = 10, min_reliability: float = 0.5
+) -> pd.DataFrame:
+    """Rank candidate serves for a match context using the saved primary model.
+
+    ``context`` is validated against the categorical values actually observed
+    in the historical data (see ``recommend_serves.validate_context``), and the
+    ranked output defaults to combos with ``combo_reliability >= min_reliability``
+    (15+ historical attempts) -- pass ``min_reliability=0.0`` to see every
+    candidate, including ones with little or no historical data.
+    """
     import joblib
 
     context = context or EXAMPLE_CONTEXT
     print("[recommend] scoring candidate serves ...")
     history = pd.read_csv(PROCESSED_PATH)
+
+    valid_domains = recommend_serves.compute_valid_domains(history)
+    recommend_serves.validate_context(context, valid_domains)
+
     model = joblib.load(f"{MODELS_DIR}/serve_win_probability_model.pkl")
     model_features = joblib.load(f"{MODELS_DIR}/model_features.pkl")
 
@@ -143,6 +157,8 @@ def run_recommend(context: dict | None = None, top_n: int = 10) -> pd.DataFrame:
     rec["predicted_win_probability"] = model.predict_proba(rec[model_features])[:, 1]
 
     ranked = recommend_serves.compute_recommendation_score(rec)
+    ranked = recommend_serves.filter_by_reliability(ranked, min_reliability=min_reliability)
+
     display_cols = [
         "serve_type", "spin_type", "spin_intensity", "serve_length", "placement_zone",
         "predicted_win_probability", "combo_win_rate", "combo_attempts",
@@ -157,8 +173,14 @@ STEPS = {
     "clean": run_clean,
     "features": run_features,
     "train": run_train,
-    "recommend": run_recommend,
 }
+
+# CLI flag dest -> EXAMPLE_CONTEXT key (argparse converts "--game-number" to
+# args.game_number, so these names already line up 1:1 with the context dict).
+CONTEXT_FLAG_FIELDS = [
+    "game_number", "server_score", "receiver_score", "game_state",
+    "opponent_skill_level", "opponent_style", "side",
+]
 
 
 def run_all() -> None:
@@ -168,16 +190,59 @@ def run_all() -> None:
     run_recommend()
 
 
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="python -m src.run_pipeline")
+    subparsers = parser.add_subparsers(dest="step")
+
+    subparsers.add_parser("all", help="clean -> features -> train -> recommend")
+    subparsers.add_parser("clean", help="normalize raw data + derive target")
+    subparsers.add_parser("features", help="regenerate the engineered feature CSV")
+    subparsers.add_parser("train", help="train models, write models/*.pkl")
+
+    rec = subparsers.add_parser("recommend", help="rank candidate serves for a match context")
+    rec.add_argument("--game-number", type=int, default=None)
+    rec.add_argument("--server-score", type=int, default=None)
+    rec.add_argument("--receiver-score", type=int, default=None)
+    rec.add_argument("--game-state", default=None)
+    rec.add_argument("--opponent-skill-level", default=None)
+    rec.add_argument("--opponent-style", default=None)
+    rec.add_argument("--side", default=None)
+    rec.add_argument("--top-n", type=int, default=10)
+    rec.add_argument(
+        "--min-reliability", type=float, default=0.5,
+        help="minimum combo_reliability (0.0-1.0) to keep in the ranked output; "
+             "0.0 disables filtering. Default 0.5 (>=15 historical attempts).",
+    )
+    return parser
+
+
+def context_from_args(args: argparse.Namespace) -> dict:
+    """Build a match context dict from CLI flags, falling back to EXAMPLE_CONTEXT
+    for any flag the user didn't supply."""
+    context = dict(EXAMPLE_CONTEXT)
+    for field in CONTEXT_FLAG_FIELDS:
+        value = getattr(args, field, None)
+        if value is not None:
+            context[field] = value
+    return context
+
+
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    step = argv[0] if argv else "all"
-    if step in ("all", "--all"):
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    step = args.step or "all"
+
+    if step == "all":
         run_all()
-    elif step in STEPS:
-        STEPS[step]()
+    elif step == "recommend":
+        context = context_from_args(args)
+        try:
+            run_recommend(context=context, top_n=args.top_n, min_reliability=args.min_reliability)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
     else:
-        print(f"Unknown step: {step!r}. Choose from: all, {', '.join(STEPS)}", file=sys.stderr)
-        return 2
+        STEPS[step]()
     return 0
 
 
