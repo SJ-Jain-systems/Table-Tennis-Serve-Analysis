@@ -70,7 +70,7 @@ def run_clean() -> None:
 def run_features() -> pd.DataFrame:
     """Build the 52-column engineered feature set from the raw CSV."""
     print("[features] engineering features ...")
-    raw = pd.read_csv(RAW_PATH)
+    raw = clean_data.validate_raw_schema(pd.read_csv(RAW_PATH))
     engineered = features.add_features(raw)
     engineered.to_csv(PROCESSED_PATH, index=False)
     print(f"[features] wrote {PROCESSED_PATH}  ({engineered.shape[0]} rows x {engineered.shape[1]} cols)")

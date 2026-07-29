@@ -12,7 +12,7 @@ import pytest
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
-from src import features, recommend_serves, train_model
+from src import clean_data, features, recommend_serves, train_model
 from src.train_model import build_preprocessor
 
 RAW_PATH = Path("data/table_tennis_serves.csv")
@@ -133,3 +133,53 @@ def test_filter_by_reliability_empty_result_falls_back(capsys):
     result = recommend_serves.filter_by_reliability(df, min_reliability=0.9)
     assert len(result) == 2
     assert "warning" in capsys.readouterr().out.lower()
+
+
+# --- Raw-data schema validation (clean_data.validate_raw_schema) -------------
+
+def _valid_raw_row() -> dict:
+    """A single row satisfying the raw-input contract, one value per column."""
+    return {
+        "serve_type": "backhand", "spin_type": "float/no-spin", "spin_intensity": 1,
+        "serve_length": "long", "placement_zone": "middle_FH", "toss_height": "medium",
+        "contact_point": "body_center", "match_id": 1, "game_number": 1,
+        "server_score": 0, "receiver_score": 0, "game_state": "neutral",
+        "opponent_id": 1, "opponent_skill_level": "intermediate", "opponent_style": "looper",
+        "side": "forehand_side", "return_type": "loop", "return_quality": 3,
+        "return_placement": "deep_BH", "rally_length": 6, "point_outcome": "lost",
+        "point_end_type": "forced_error", "intended_setup": "force_weak_push",
+        "rally_type_achieved": "attack_rally", "chop_rally_outcome": "not_applicable",
+    }
+
+
+def test_validate_raw_schema_accepts_shipped_dataset():
+    """The dataset shipped in the repo satisfies its own input contract."""
+    df = pd.read_csv(RAW_PATH)
+    assert clean_data.validate_raw_schema(df) is df
+
+
+def test_validate_raw_schema_rejects_missing_column():
+    df = pd.DataFrame([_valid_raw_row()]).drop(columns=["placement_zone"])
+    with pytest.raises(ValueError, match="placement_zone"):
+        clean_data.validate_raw_schema(df)
+
+
+def test_validate_raw_schema_rejects_out_of_range_numeric():
+    row = _valid_raw_row()
+    row["spin_intensity"] = 9  # scale is 1-3
+    with pytest.raises(ValueError, match="spin_intensity"):
+        clean_data.validate_raw_schema(pd.DataFrame([row]))
+
+
+def test_validate_raw_schema_rejects_non_numeric_value():
+    row = _valid_raw_row()
+    row["rally_length"] = "long"
+    with pytest.raises(ValueError, match="rally_length"):
+        clean_data.validate_raw_schema(pd.DataFrame([row]))
+
+
+def test_validate_raw_schema_rejects_unknown_outcome():
+    row = _valid_raw_row()
+    row["point_outcome"] = "tie"  # only won/lost allowed
+    with pytest.raises(ValueError, match="point_outcome"):
+        clean_data.validate_raw_schema(pd.DataFrame([row]))
